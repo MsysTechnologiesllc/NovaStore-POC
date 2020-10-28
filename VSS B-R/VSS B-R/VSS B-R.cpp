@@ -133,7 +133,7 @@ int restore()
 	{
 		cout<<bpath.at(i)<<endl;//Call Restore Here.
 	}*/
-
+	Sleep(180000);
 	cout << "Restore Complete" << endl;
 	result = bcomp->PostRestore(&ppAsync);
 	if (result != S_OK)
@@ -195,9 +195,11 @@ int main()
 	string c[50];
 	IVssWMFiledesc* file = NULL;
 	IVssAsync* sCopy = NULL;
-	vector<char*> bpath;
+	vector<char*> ppath;
+	vector<char*> pfile;
 	BSTR XML2;
 	BSTR fileSpec;
+	string rstr;
 
 	FILE* fs;
 	fs = fopen("rmd.txt", "w+");
@@ -311,13 +313,19 @@ int main()
 					str += '\\';
 
 				}
+				rstr = str;
 				str += str1;
 				path = _com_util::ConvertStringToBSTR(str.c_str());
 				lpszText2 = _com_util::ConvertBSTRToString(path);
 				result = bcomp->AddComponent(instId, rclassId, cinfo->type, path, cinfo->bstrComponentName);
-				if (result == S_OK)
+				if ((result == S_OK) && (str1 != ""))
 				{
-					bpath.push_back(lpszText2);
+					path = _com_util::ConvertStringToBSTR(rstr.c_str());
+					char* a = _com_util::ConvertBSTRToString(path);
+					ppath.push_back(a);
+					path = _com_util::ConvertStringToBSTR(str1.c_str());
+					char* b = _com_util::ConvertBSTRToString(path);
+					pfile.push_back(b);
 				}
 				int first = str.find_first_of("\\");
 				string sub = str.substr(0, first + 1);
@@ -422,9 +430,9 @@ int main()
 	cout << "Before Complete" << endl;
 
 
-	/*for (int i = 0;i < bpath.size();i++)
+	/*for (int i = 0;(i < ppath.size())&&(i<pfile.size());i++)
 	{
-		printf("%s\n", bpath.at(i)); //Call backup here.
+		printf("Path: %s File: %s\n", ppath.at(i),pfile.at(i));  //Call BackUp Here.
 	}*/
 
 	result = bcomp->BackupComplete(&complete);
