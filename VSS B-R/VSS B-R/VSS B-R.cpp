@@ -133,7 +133,7 @@ int restore()
 	{
 		cout<<bpath.at(i)<<endl;//Call Restore Here.
 	}*/
-	Sleep(180000);
+	//Sleep(180000);
 	cout << "Restore Complete" << endl;
 	result = bcomp->PostRestore(&ppAsync);
 	if (result != S_OK)
