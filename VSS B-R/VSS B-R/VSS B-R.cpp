@@ -8,7 +8,327 @@
 #include <atlstr.h>
 #pragma warning(disable:4996)
 #include <vector>
+#include <strsafe.h>
 using namespace std;
+
+
+
+#define BUFFERSIZE 4096
+bool toggleRestore = false;
+char backUpFile[] = "C:\\BackupData";
+
+
+void BackupFileName(char full_path[], char desti_path[], char* ptr, int no) {
+
+	char path[_MAX_PATH] = { '\0' };
+	char drive[_MAX_DRIVE] = { '\0' };
+	char dir[_MAX_DIR] = { '\0' };
+	char fname[_MAX_FNAME] = { '\0' };
+	char ext[_MAX_EXT] = { '\0' };
+
+	_splitpath_s(full_path, drive, _MAX_DRIVE, dir, _MAX_DIR, fname, _MAX_FNAME, ext, _MAX_EXT);
+
+	strcat_s(path, MAX_PATH, desti_path);
+	if (no == 1) {
+		strcat_s(path, _MAX_FNAME, dir);//
+
+	}
+	else {
+		strcat_s(path, MAX_PATH, "\\");
+	}
+	strcat_s(path, _MAX_FNAME, fname);
+
+	if (strlen(ext) != 0) {
+
+		strcat_s(path, _MAX_FNAME, ext);
+	}
+
+	strcpy_s(ptr, MAX_PATH, path);
+
+}
+
+void sourceBackupFileName(char full_path[], char desti_path[], char* ptr, bool restore) {
+
+	char path[_MAX_PATH] = { '\0' };
+	char restoreFile[_MAX_PATH] = { '\0' };
+	char drive[_MAX_DRIVE] = { '\0' };
+	char dir[_MAX_DIR] = { '\0' };
+	char fname[_MAX_FNAME] = { '\0' };
+	char ext[_MAX_EXT] = { '\0' };
+
+
+	_splitpath_s(full_path, drive, _MAX_DRIVE, dir, _MAX_DIR, fname, _MAX_FNAME, ext, _MAX_EXT);
+
+	if (restore == false) {
+		int lastIndex = (strlen(desti_path) - 1);
+		strcat_s(path, MAX_PATH, desti_path);
+		if (desti_path[lastIndex] != '\\')
+			strcat_s(path, MAX_PATH, "\\");
+		strcat_s(path, _MAX_FNAME, fname);
+	}
+	if (strlen(ext) != 0) {
+
+		strcat_s(path, _MAX_FNAME, ext);
+	}
+
+	if (restore == true) {
+		strcat_s(restoreFile, _MAX_FNAME, fname);
+		strcat_s(restoreFile, _MAX_FNAME, ext);
+		strcpy_s(ptr, MAX_PATH, restoreFile);
+	}
+	else {
+		strcpy_s(ptr, MAX_PATH, path);
+	}
+
+}
+
+
+void destiBackupFileName(char full_path[], char desti_path[], char* ptr) {
+
+
+	HANDLE HdestiDir;
+	char path[_MAX_PATH] = { '\0' };
+	char drive[_MAX_DRIVE] = { '\0' };
+	char dir[_MAX_DIR] = { '\0' };
+	char lastDir[MAX_PATH] = { '\0' };
+	char fname[_MAX_FNAME] = { '\0' };
+	char ext[_MAX_EXT] = { '\0' };
+
+	_splitpath_s(full_path, drive, _MAX_DRIVE, dir, _MAX_DIR, fname, _MAX_FNAME, ext, _MAX_EXT);
+
+	strcat_s(path, MAX_PATH, desti_path);
+
+	strcat_s(path, MAX_PATH, "\\");
+	strcat_s(path, _MAX_FNAME, fname);
+
+	if (strlen(ext) != 0) {
+		strcat_s(path, _MAX_FNAME, ext);
+	}
+
+	strcpy_s(ptr, MAX_PATH, path);
+	//printf("copy file name is %s\n", path);
+}
+
+bool MetadatModify(HANDLE hFileOpen, HANDLE hFileCreate) {
+
+	/////******************** for FileBasicInfo *********************************************** //////
+
+	size_t size = sizeof(FILE_BASIC_INFO);
+	FILE_BASIC_INFO* fileBasicInformation = NULL;
+	fileBasicInformation = (FILE_BASIC_INFO*)malloc(size);
+
+
+	if (!(GetFileInformationByHandleEx(hFileOpen, FileBasicInfo, fileBasicInformation, size))) {
+
+		printf("GetFileInformationByHandleEx()1 is failed %d.\n", GetLastError());
+		return false;
+	}
+
+	if (!SetFileInformationByHandle(hFileCreate, FileBasicInfo, fileBasicInformation, size)) {
+
+		printf("SetFileInformationByHandle() is failed %d .\n", GetLastError());
+		return false;
+	}
+
+	free(fileBasicInformation);
+}
+
+void fileBackupOperation(char sourcePath[], char destiPath[], char* fileName) {
+
+
+
+	HANDLE HsourceFile, HdestiFile;
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	WIN32_FIND_DATA ffd;
+	TCHAR szDir[MAX_PATH];
+	char dfPath[MAX_PATH];
+	char sfPath[MAX_PATH];
+	LARGE_INTEGER filesize;
+	char   ReadBuffer[BUFFERSIZE] = { 0 };
+	DWORD NumberOfBytesRead = 0;
+	LPDWORD lpNumberOfBytesRead = &NumberOfBytesRead;
+
+
+
+	// for conversion of char to wchar_t*
+
+	size_t newSourSize = strlen(sourcePath) + 1;
+	wchar_t* wcSource = new wchar_t[newSourSize];
+	size_t convertedChars = 0;
+	mbstowcs_s(&convertedChars, wcSource, newSourSize, sourcePath, _TRUNCATE);
+
+	StringCchCopy(szDir, MAX_PATH, wcSource);
+	StringCchCat(szDir, MAX_PATH, TEXT("\\*"));
+
+	hFind = FindFirstFile(szDir, &ffd);
+	if (hFind == INVALID_HANDLE_VALUE) {
+
+		printf("FindFirst file is fail %d\n", GetLastError());
+		return;
+	}
+
+
+	do
+	{
+		_bstr_t b(ffd.cFileName);
+		char* c = b;
+
+		if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+
+			if (strcmp(c, fileName) == 0) {
+
+				sourceBackupFileName(c, sourcePath, sfPath, false);
+				destiBackupFileName(sfPath, destiPath, dfPath);
+				//printf("destiPath==in do while=========================%s\n", dfPath);
+				//printf("sourcePath==in do while=========================%s\n", sfPath);
+
+				// read file on Source//
+				size_t newSourSize = strlen(sfPath) + 1;
+				wchar_t* wcSource = new wchar_t[newSourSize];
+				size_t convertedSourChars = 0;
+				mbstowcs_s(&convertedSourChars, wcSource, newSourSize, sfPath, _TRUNCATE);
+
+				HsourceFile = CreateFile(wcSource, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+				if (HsourceFile == INVALID_HANDLE_VALUE) {
+					printf("Error in Source file creation %d \n", GetLastError());
+					return;
+				}
+
+
+				// write file on detination//
+				size_t newDestiSize = strlen(dfPath) + 1;
+				wchar_t* wcDestin = new wchar_t[newDestiSize];
+				size_t convertedDestiChars = 0;
+				mbstowcs_s(&convertedDestiChars, wcDestin, newDestiSize, dfPath, _TRUNCATE);
+
+				HdestiFile = CreateFile(wcDestin, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+
+				if (HdestiFile == INVALID_HANDLE_VALUE) {
+					printf("Error in Destination file creation %d \n", GetLastError());
+					return;
+				}
+
+				while ((ReadFile(HsourceFile, ReadBuffer, sizeof(ReadBuffer), lpNumberOfBytesRead, NULL))) {
+
+					if (NumberOfBytesRead > 0)
+						(WriteFile(HdestiFile, ReadBuffer, NumberOfBytesRead, NULL, NULL));
+					else
+						break;
+
+					RtlZeroMemory(ReadBuffer, BUFFERSIZE);
+				}
+
+				MetadatModify(HsourceFile, HdestiFile);
+
+				CloseHandle(HdestiFile);  // detination file handle close
+				CloseHandle(HsourceFile); // source file handle close
+				delete(wcDestin);
+				delete(wcSource);
+
+			}
+		}
+
+	} while (FindNextFile(hFind, &ffd) != 0);
+
+	printf("program is Done\n");
+
+	//CloseHandle(hFind);
+}
+
+
+/////////////////////////////////////code end///////////////////////////////////////////////////////////////////////////
+void fileRestoreOperation(char sourcePath[], char destiPath[]) {
+
+	TCHAR szDir[MAX_PATH];
+	char sfPath[MAX_PATH];
+	char dFile[MAX_PATH];
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	HANDLE HdestiReFile, HsourceReFile;
+	WIN32_FIND_DATA fdd;
+	char   ReadBuffer[BUFFERSIZE] = { 0 };
+	DWORD NumberOfBytesRead = 0;
+	LPDWORD lpNumberOfBytesRead = &NumberOfBytesRead;
+
+	size_t newSourSize = strlen(sourcePath) + 1;
+	wchar_t* wcSource = new wchar_t[newSourSize];
+	size_t convertedChars = 0;
+	mbstowcs_s(&convertedChars, wcSource, newSourSize, sourcePath, _TRUNCATE);
+
+	StringCchCopy(szDir, MAX_PATH, wcSource);
+	StringCchCat(szDir, MAX_PATH, TEXT("\\*"));
+
+	hFind = FindFirstFile(szDir, &fdd);
+	if (hFind == INVALID_HANDLE_VALUE) {
+
+		printf("FindFirst file is fail %d\n", GetLastError());
+		return;
+	}
+
+	do
+	{
+		_bstr_t b(fdd.cFileName);
+		char* cdeti = b;
+
+		if (!(fdd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+
+			sourceBackupFileName(destiPath, sourcePath, dFile, true);
+
+			if (strcmp(cdeti, dFile) == 0) {
+
+				sourceBackupFileName(cdeti, sourcePath, sfPath, false);
+				
+				size_t newSourSize = strlen(sfPath) + 1;
+				wchar_t* wcSource = new wchar_t[newSourSize];
+				size_t convertedSourChars = 0;
+				mbstowcs_s(&convertedSourChars, wcSource, newSourSize, sfPath, _TRUNCATE);
+
+				HsourceReFile = CreateFile(wcSource, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+				if (HsourceReFile == INVALID_HANDLE_VALUE) {
+					printf("Error in Source file creation %d \n", GetLastError());
+					return;
+				}
+
+				//destination file path conversion
+
+				size_t newDestiSize = strlen(destiPath) + 1;
+				wchar_t* wcDestin = new wchar_t[newDestiSize];
+				size_t convertedDestiChars = 0;
+				mbstowcs_s(&convertedDestiChars, wcDestin, newDestiSize, destiPath, _TRUNCATE);
+
+
+				//code for open source file and write it into destination file 
+				
+				HdestiReFile = CreateFile(wcDestin, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+				if (HdestiReFile == INVALID_HANDLE_VALUE) {
+					printf("Error in Destination file creation %d \n", GetLastError());
+					return;
+				}
+
+				while ((ReadFile(HsourceReFile, ReadBuffer, sizeof(ReadBuffer), lpNumberOfBytesRead, NULL))) {
+
+					if (NumberOfBytesRead > 0)
+						(WriteFile(HdestiReFile, ReadBuffer, NumberOfBytesRead, NULL, NULL));
+					else
+						break;
+
+					RtlZeroMemory(ReadBuffer, BUFFERSIZE);
+				}
+
+				MetadatModify(HsourceReFile, HdestiReFile);
+
+				CloseHandle(HdestiReFile);  // detination file handle close
+				CloseHandle(HsourceReFile); // source file handle close
+				delete(wcDestin);
+				delete(wcSource);
+
+			}
+		}
+
+	} while (FindNextFile(hFind, &fdd) != 0);
+}
 
 
 
@@ -129,10 +449,11 @@ int restore()
 	ppAsync->Wait();
 	cout << "Pre restore Completed" << endl;
 
-	/*for (int i = 0;i < bpath.size();i++)
+	for (int i = 0;i < bpath.size();i++)
 	{
-		cout<<bpath.at(i)<<endl;//Call Restore Here.
-	}*/
+		//cout<<bpath.at(i)<<endl;//Call Restore Here.
+		fileRestoreOperation(backUpFile, bpath.at(i));
+	}
 	//Sleep(180000);
 	cout << "Restore Complete" << endl;
 	result = bcomp->PostRestore(&ppAsync);
@@ -430,10 +751,29 @@ int main()
 	cout << "Before Complete" << endl;
 
 
-	/*for (int i = 0;(i < ppath.size())&&(i<pfile.size());i++)
+	char brrFile[] = "C:\\repVSSVol";
+	wchar_t* snapVol = snapshotProp.m_pwszSnapshotDeviceObject;
+	_bstr_t b(snapVol);
+	char* cSnapshot = b;
+	
+	for (int i = 0; (i < ppath.size()) && (i < pfile.size()); i++)
 	{
-		printf("Path: %s File: %s\n", ppath.at(i),pfile.at(i));  //Call BackUp Here.
-	}*/
+		printf("%s\n", ppath.at(i));
+		char dfPath[MAX_PATH] = { '\0' };
+
+		BackupFileName(ppath.at(i), cSnapshot, dfPath, 1);
+		wchar_t wtext[MAX_PATH];
+		mbstowcs(wtext, dfPath, strlen(dfPath) + 1);//Plus null
+		LPWSTR ptr = wtext;
+
+		if (CreateSymbolicLink(L"C:\\repVSSVol", ptr, SYMBOLIC_LINK_FLAG_DIRECTORY) == 0)
+			printf("error in create symbolic link function \n", GetLastError());
+		fileBackupOperation(brrFile, backUpFile, pfile.at(i));
+		if (RemoveDirectoryA("C:\\repVSSVol")) {
+			printf("file is deleted successfully \n");
+		}
+		
+	}
 
 	result = bcomp->BackupComplete(&complete);
 	if (result != S_OK)
