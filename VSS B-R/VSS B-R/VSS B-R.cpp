@@ -449,12 +449,12 @@ int restore()
 	ppAsync->Wait();
 	cout << "Pre restore Completed" << endl;
 
-	for (int i = 0;i < bpath.size();i++)
+	for (int i = 0; i < bpath.size(); i++)
 	{
 		//cout<<bpath.at(i)<<endl;//Call Restore Here.
 		fileRestoreOperation(backUpFile, bpath.at(i));
 	}
-	//Sleep(180000);
+
 	cout << "Restore Complete" << endl;
 	result = bcomp->PostRestore(&ppAsync);
 	if (result != S_OK)
@@ -501,6 +501,7 @@ int main()
 	VSS_ID classId = { 0x66841cd4,0x6ded,0x4f4b,{0x8f,0x17,0xfd,0x23,0xf8,0xdd,0xc3,0xde} };
 	IVssAsync* complete = NULL;
 	VSS_ID setid;
+	VSS_ID sid[64];
 	VSS_ID instId;
 	IVssAsync* async = NULL;
 	IVssAsync* pback = NULL;
@@ -521,6 +522,7 @@ int main()
 	BSTR XML2;
 	BSTR fileSpec;
 	string rstr;
+	int n = 0;
 
 	FILE* fs;
 	fs = fopen("rmd.txt", "w+");
@@ -540,7 +542,7 @@ int main()
 		ReleaseInterface(bcomp);
 		exit(2);
 	}
-	result = bcomp->SetContext(VSS_CTX_BACKUP | VSS_CTX_CLIENT_ACCESSIBLE_WRITERS | VSS_CTX_APP_ROLLBACK);
+	result = bcomp->SetContext(VSS_CTX_BACKUP | VSS_CTX_APP_ROLLBACK);
 	if (result != S_OK)
 	{
 		printf("SetContext error:0x%08lx\n", result);
@@ -657,13 +659,14 @@ int main()
 						c[l] = sub;
 						TCHAR volume[MAX_PATH];
 						_tcscpy_s(volume, CA2T(sub.c_str()));
-						result = bcomp->AddToSnapshotSet(volume, GUID_NULL, &setid);
+						result = bcomp->AddToSnapshotSet(volume, GUID_NULL, &sid[n]);
 						if (result != S_OK)
 						{
 							printf("AddToSnapshotSet error:0x%08lx\n", result);
 							ReleaseInterface(bcomp);
 							exit(2);
 						}
+						n++;
 					}
 					else if (c[l] != sub)
 					{
@@ -680,6 +683,7 @@ int main()
 			printf("\n");
 		}
 	}
+	
 	BSTR XML;
 	result = bcomp->SaveAsXML(&XML);
 	//wprintf_s(L"XML: \n%s\n\n", XML);
@@ -719,62 +723,53 @@ int main()
 	printf("Taking Snap Shot...\n");
 	sCopy->Wait();
 	printf("Get the snapshot device object from the properties...\n");
-	VSS_SNAPSHOT_PROP snapshotProp = { 0 };
-	result = bcomp->GetSnapshotProperties(setid, &snapshotProp);
-	if (result != S_OK)
+	PVSS_SNAPSHOT_PROP snapshotProp = (VSS_SNAPSHOT_PROP*)malloc((n + 1) * sizeof(VSS_SNAPSHOT_PROP));
+	cout << "Number of copies:" << snapshotProp->m_lSnapshotsCount << endl;
+	for (int i = 0; i < n; i++)
 	{
-		printf("GetSnapshotProperties error:0x%08lx\n", result);
-		ReleaseInterface(bcomp);
-		exit(2);
-	}
-
-	//display out snapsot properties
-	//printf("Snapshot Id :%.8x-%.4x-%.4x-%.2x%.2x-%.2x%.2x%.2x%.2x%.2x%.2x", GUID_PRINTF_ARG(snapshotProp.m_SnapshotId));
-	//_tprintf (_T(" Snapshot Set Id ")  WSTR_GUID_FMT _T("\n"), GUID_PRINTF_ARG(snapshotProp.m_SnapshotSetId));
-	//_tprintf (_T(" Provider Id ")  WSTR_GUID_FMT _T("\n"), GUID_PRINTF_ARG(snapshotProp.m_ProviderId));													//
-	//_tprintf (_T(" OriginalVolumeName : %ls\n"),snapshotProp.m_pwszOriginalVolumeName);
-	//if (snapshotProp.m_pwszExposedName != NULL)	_tprintf (_T(" ExposedName : %ls\n"), snapshotProp.m_pwszExposedName);
-	//if (snapshotProp.m_pwszExposedPath != NULL)	_tprintf (_T(" ExposedPath : %ls\n"), snapshotProp.m_pwszExposedPath);
-	//if (snapshotProp.m_pwszSnapshotDeviceObject != NULL) _tprintf (_T(" DeviceObject : %ls\n"), snapshotProp.m_pwszSnapshotDeviceObject);													
-
-	/**/
-	SYSTEMTIME stUTC, stLocal;
-	FILETIME ftCreate;
-	// Convert the last-write time to local time.
-	ftCreate.dwHighDateTime = HILONG(snapshotProp.m_tsCreationTimestamp);
-	ftCreate.dwLowDateTime = LOLONG(snapshotProp.m_tsCreationTimestamp);
-	FileTimeToSystemTime(&ftCreate, &stUTC);
-	SystemTimeToTzSpecificLocalTime(NULL, &stUTC, &stLocal);
-
-	printf("Created : %02d/%02d/%d  %02d:%02d \n", stLocal.wMonth, stLocal.wDay, stLocal.wYear, stLocal.wHour, stLocal.wMinute);
-	printf("\n");
-	cout << "Before Complete" << endl;
-
-
-	char brrFile[] = "C:\\repVSSVol";
-	wchar_t* snapVol = snapshotProp.m_pwszSnapshotDeviceObject;
-	_bstr_t b(snapVol);
-	char* cSnapshot = b;
-	
-	for (int i = 0; (i < ppath.size()) && (i < pfile.size()); i++)
-	{
-		printf("%s\n", ppath.at(i));
-		char dfPath[MAX_PATH] = { '\0' };
-
-		BackupFileName(ppath.at(i), cSnapshot, dfPath, 1);
-		wchar_t wtext[MAX_PATH];
-		mbstowcs(wtext, dfPath, strlen(dfPath) + 1);//Plus null
-		LPWSTR ptr = wtext;
-
-		if (CreateSymbolicLink(L"C:\\repVSSVol", ptr, SYMBOLIC_LINK_FLAG_DIRECTORY) == 0)
-			printf("error in create symbolic link function \n", GetLastError());
-		fileBackupOperation(brrFile, backUpFile, pfile.at(i));
-		if (RemoveDirectoryA("C:\\repVSSVol")) {
-			printf("file is deleted successfully \n");
+		result = bcomp->GetSnapshotProperties(sid[i], &snapshotProp[i]);
+		if (result != S_OK)
+		{
+			printf("GetSnapshotProperties error:0x%08lx\n", result);
+			ReleaseInterface(bcomp);
+			exit(2);
 		}
-		
-	}
+		cout << "Snapshot of volume:" << endl;
+		wcout << snapshotProp[i].m_pwszOriginalVolumeName << endl;
+		WCHAR drive[MAX_PATH];
+		PDWORD dlen = NULL;
+		GetVolumePathNamesForVolumeNameW(snapshotProp[i].m_pwszOriginalVolumeName, drive, MAX_PATH, dlen);
+		wcout << drive << endl;
+		wstring ws(drive);
+		string drivel(ws.begin(), ws.end());
 
+		char brrFile[] = "C:\\repVSSVol";
+		wchar_t* snapVol = snapshotProp[i].m_pwszSnapshotDeviceObject;
+		_bstr_t b(snapVol);
+		char* cSnapshot = b;
+		for (int j = 0; (j < ppath.size()) && (j < pfile.size()); j++)
+		{
+			string comp(ppath.at(j));
+			string comp1 = comp.substr(0, 3);
+			if (drivel == comp1)
+			{
+				char dfPath[MAX_PATH] = { '\0' };
+
+				BackupFileName(ppath.at(j), cSnapshot, dfPath, 1);
+				wchar_t wtext[MAX_PATH];
+				mbstowcs(wtext, dfPath, strlen(dfPath) + 1);//Plus null
+				LPWSTR ptr = wtext;
+
+				if (CreateSymbolicLink(L"C:\\repVSSVol", ptr, SYMBOLIC_LINK_FLAG_DIRECTORY) == 0)
+					printf("error in create symbolic link function \n", GetLastError());
+				fileBackupOperation(brrFile, backUpFile, pfile.at(j));
+				if (RemoveDirectoryA("C:\\repVSSVol")) {
+					printf("file is deleted successfully \n");
+				}
+			}
+		}
+	}
+	
 	result = bcomp->BackupComplete(&complete);
 	if (result != S_OK)
 	{
@@ -783,17 +778,6 @@ int main()
 		exit(2);
 	}
 	complete->Wait();
-	long dsnap;
-	VSS_ID idsnap;
-	result = bcomp->DeleteSnapshots(snapshotProp.m_SnapshotId, VSS_OBJECT_SNAPSHOT, false, &dsnap, &idsnap);
-	if (result != S_OK)
-	{
-		printf("DeleteSnapshots error: 0x%08lx\n", result);
-		ReleaseInterface(bcomp);
-		exit(2);
-	}
-	printf("No of snapshot deleted: %ld\n", dsnap);
-
 	ReleaseInterface(bcomp);
 	cout << "Calling Restore" << endl;
 	restore();
