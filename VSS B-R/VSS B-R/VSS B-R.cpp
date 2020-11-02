@@ -9,6 +9,13 @@
 #pragma warning(disable:4996)
 #include <vector>
 #include <strsafe.h>
+#include <string>
+#include <cstdlib>
+#include <windows.h>
+#include <winioctl.h>
+#include <virtdisk.h>
+#include <initguid.h>
+#pragma comment(lib, "virtdisk.lib")
 using namespace std;
 
 
@@ -16,6 +23,44 @@ using namespace std;
 #define BUFFERSIZE 4096
 bool toggleRestore = false;
 char backUpFile[] = "C:\\BackupData";
+
+
+
+
+DEFINE_GUID(VIRTUAL_STORAGE_TYPE_VENDOR_MICROSOFT, 0xec984aec, 0xa0f9, 0x47e9, 0x90, 0x1f, 0x71, 0x41, 0x5a, 0x66, 0x34, 0x5b);
+DEFINE_GUID(VIRTUAL_STORAGE_TYPE_VENDOR_UNKNOWN, 0x00000000, 0x0000, 0x0000, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+
+int activate_rct(string gpath)
+{
+	HANDLE vhdHandle;
+	_VIRTUAL_STORAGE_TYPE storageType;
+	storageType.DeviceId = VIRTUAL_STORAGE_TYPE_DEVICE_UNKNOWN;
+	storageType.VendorId = { 0xec984aec, 0xa0f9, 0x47e9, {0x90, 0x1f, 0x71, 0x41, 0x5a, 0x66, 0x34, 0x5b} };
+	wchar_t* path = new wchar_t[gpath.length() + 1];
+	std::copy(gpath.begin(), gpath.end(), path);
+	VIRTUAL_DISK_ACCESS_MASK mask = VIRTUAL_DISK_ACCESS_ALL;
+	PSET_VIRTUAL_DISK_INFO diskInfo;
+	ULONG diskInfoSize = sizeof(SET_VIRTUAL_DISK_INFO);
+	std::wcout << "size of diskinfo structure " << diskInfoSize << std::endl;
+	diskInfo = (PSET_VIRTUAL_DISK_INFO)malloc(diskInfoSize);
+	if (diskInfo == NULL)
+	{
+		std::cout << "Failed to malloc disk info, ret=" << std::endl;
+		return 0;
+	}
+	std::wcout << "Opening Virtual disk " << path << std::endl;
+	DWORD res = OpenVirtualDisk(&storageType, path, mask, OPEN_VIRTUAL_DISK_FLAG_NONE, NULL, &vhdHandle);
+
+	if (res != ERROR_SUCCESS)
+	{
+		std::cout << "Failed to open disk, ret=" << res << std::endl;
+		return 0;
+	}
+	diskInfo->Version = SET_VIRTUAL_DISK_INFO_CHANGE_TRACKING_STATE;
+	diskInfo->ChangeTrackingEnabled = true;
+	res = SetVirtualDiskInformation(vhdHandle, diskInfo);
+	return res;
+}
 
 
 void BackupFileName(char full_path[], char desti_path[], char* ptr, int no) {
@@ -277,7 +322,7 @@ void fileRestoreOperation(char sourcePath[], char destiPath[]) {
 			if (strcmp(cdeti, dFile) == 0) {
 
 				sourceBackupFileName(cdeti, sourcePath, sfPath, false);
-				
+
 				size_t newSourSize = strlen(sfPath) + 1;
 				wchar_t* wcSource = new wchar_t[newSourSize];
 				size_t convertedSourChars = 0;
@@ -299,7 +344,7 @@ void fileRestoreOperation(char sourcePath[], char destiPath[]) {
 
 
 				//code for open source file and write it into destination file 
-				
+
 				HdestiReFile = CreateFile(wcDestin, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
 				if (HdestiReFile == INVALID_HANDLE_VALUE) {
@@ -649,6 +694,10 @@ int main()
 					path = _com_util::ConvertStringToBSTR(str1.c_str());
 					char* b = _com_util::ConvertBSTRToString(path);
 					pfile.push_back(b);
+					if (str.find(".vhdx") != std::string::npos)
+					{
+						activate_rct(str);
+					}
 				}
 				int first = str.find_first_of("\\");
 				string sub = str.substr(0, first + 1);
@@ -683,7 +732,7 @@ int main()
 			printf("\n");
 		}
 	}
-	
+
 	BSTR XML;
 	result = bcomp->SaveAsXML(&XML);
 	//wprintf_s(L"XML: \n%s\n\n", XML);
@@ -769,7 +818,7 @@ int main()
 			}
 		}
 	}
-	
+
 	result = bcomp->BackupComplete(&complete);
 	if (result != S_OK)
 	{
